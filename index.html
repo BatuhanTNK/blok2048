@@ -1,0 +1,113 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><link rel="stylesheet" href="src/styles.css"></head><body>
+<title>Blok 2048</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Instrument+Sans:wght@400;500;600&display=swap">
+
+
+
+
+<main class="app">
+  <header class="top">
+    <div class="brand">
+      <span class="brand-icon" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+      <div><h1>Blok <em>2048</em></h1>
+      <p>Yerleştir. Birleştir. Bir hamle daha.</p></div>
+    </div>
+    <button class="btn" id="newBtn" type="button">Yeni oyun</button>
+  </header>
+
+  <section class="stats" aria-label="Skor">
+    <div class="stat"><span class="lbl">Skor</span><b id="score">0</b></div>
+    <div class="stat"><span class="lbl">En iyi</span><b id="best">0</b></div>
+    <div class="goal">
+      <span>En büyük taş</span>
+      <span class="cur" id="maxv">0</span>
+      <div class="track"><i id="barfill"></i></div>
+      <span class="end">2048</span>
+    </div>
+  </section>
+
+  <section class="board-sizes" aria-label="Tahta boyutu">
+    <span>Tahta</span>
+    <div class="size-options" role="group" aria-label="Tahta boyutu seçimi">
+      <button class="size-btn" id="size8" data-size="8" type="button" aria-pressed="true">8×8</button>
+      <button class="size-btn" id="size7" data-size="7" type="button" aria-pressed="false">7×7</button>
+      <button class="size-btn" id="size6" data-size="6" type="button" aria-pressed="false">6×6</button>
+      <button class="size-btn" id="size5" data-size="5" type="button" aria-pressed="false">5×5</button>
+    </div>
+  </section>
+
+  <section class="modes" aria-label="Oyun kuralı">
+    <p class="mdesc rule-note"><b>Çizgiyi doldur, sayıları büyüt.</b><br>Dolu çizgide eşit sayılar birleşir; diğer taşlar kalır.</p>
+    <div class="confirm" id="confirm" hidden>
+      <span id="confirmMsg"></span>
+      <button class="btn primary" id="confirmYes" type="button">Evet</button>
+      <button class="btn" id="confirmNo" type="button">Vazgeç</button>
+    </div>
+  </section>
+
+  <div class="board" id="board">
+    <div class="grid" id="grid"></div>
+    <div class="layer" id="layer"></div>
+    <div class="layer" id="pv"></div>
+    <div class="layer" id="fx"></div>
+    <div class="overlay" id="over" hidden>
+      <div class="card">
+        <h2>Oyun bitti</h2>
+        <p id="overText"></p>
+        <button class="btn primary" id="againBtn" type="button">Tekrar oyna</button>
+      </div>
+    </div>
+    <div class="overlay" id="win" hidden>
+      <div class="card">
+        <h2>2048'e ulaştın</h2>
+        <p id="winText"></p>
+        <div class="row">
+          <button class="btn primary" id="keepBtn" type="button">Devam et</button>
+          <button class="btn" id="winNewBtn" type="button">Yeni oyun</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="hint" id="hint" aria-live="polite"></p>
+
+  <section class="slidebar" id="slidebar" aria-label="Kaydırma hakkı">
+    <div class="sinfo">
+      <div class="shave" id="shave">
+        <span class="slbl">Kaydırma</span>
+        <span class="prow"><span class="pips" id="pips" role="img" aria-label="0 kaydırma hakkı"><i></i><i></i></span><span class="charge-track" id="slideProgress" role="progressbar" aria-label="Yeni kaydırma hakkı ilerlemesi" aria-valuemin="0" aria-valuemax="100"><i id="slideFill"></i></span><span class="more" id="more"></span></span>
+      </div>
+      <button class="btn small" id="slideCancel" type="button" hidden>Vazgeç</button>
+    </div>
+    <div class="dirs" id="dirs" role="group" aria-label="Kaydırma yönü">
+      <button class="dirbtn" type="button" data-dir="left" aria-label="Sola kaydır"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <button class="dirbtn" type="button" data-dir="up" aria-label="Yukarı kaydır"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <button class="dirbtn" type="button" data-dir="down" aria-label="Aşağı kaydır"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <button class="dirbtn" type="button" data-dir="right" aria-label="Sağa kaydır"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
+    </div>
+  </section>
+
+  <section class="tray" id="tray" aria-label="Parçalar"></section>
+
+  <details class="help">
+    <summary>Nasıl oynanır</summary>
+    <ul>
+      <li><b>Tahta.</b> 8×8, 7×7, 6×6 veya 5×5 seçebilirsin. Boyut değişince yeni oyun başlar; her boyutun rekoru ayrı tutulur.</li>
+      <li><b>Yerleştir.</b> Parçayı sürükleyip tahtaya bırak. Parçalar döndürülmez.</li>
+      <li><b>Birleştir.</b> Aynı sayılı iki taş yan yana gelince birleşir (2 + 2 = 4). Yeni taş başka bir eşiyle karşılaşırsa zincir sürer ve her halka bir öncekinden daha çok puan verir.</li>
+      <li>Normal yerleştirmede parçanın kendi taşları birbiriyle birleşmez. Tamamen dolan çizgide ise tüm eşit taşlar birleşebilir.</li>
+      <li><b>Çizgiyi birleştir.</b> Satır veya sütun tamamen dolunca, farklı konumlardaki eşit sayılar zincirleme birleşir: dört tane 2 → bir tane 8. Sonuç, eşleşen taşların çizgi merkezine en yakın hücresinde kalır; eşi olmayan taşlar yerinde durur. Hiçbir sayı temizleme uğruna kaybolmaz. Kesişen dolu çizgilerde önce satırlar, sonra sütunlar işlenir.</li>
+      <li><b>Kaydır.</b> Oyuna kaydırma hakkı olmadan başlarsın; oynadıkça hak kazanırsın ve depoda en çok 2 hak durur. Üç parçayı kullanıp tepsiyi her yenilediğinde gösterge <b>%20</b> dolar. Beş tepside <b>1 hak kesin</b> kazanırsın; kazanma sayısı sınırsızdır. Depo doluysa gösterge %100’de bekler; bir hak kullandığında hazır hak depoya eklenir. Bir yön seç: önce sonucu görürsün, aynı yöne tekrar basınca (ya da tahtayı o yöne kaydırınca) tüm tahta 2048 gibi kayar, eş çiftler birleşir, ardından tamamen dolan çizgilerdeki eşit sayılar da birleşir. Klavyede ok tuşları da çalışır.</li>
+      <li><b>Kayıt.</b> Oyun bu tarayıcıda otomatik kaydedilir; sayfayı yeniden açınca kaldığın yerden devam edersin.</li>
+      <li><b>Bitiş.</b> Hiçbir parça sığmayınca oyun biter. Kaydırma hakkın yer açabiliyorsa oyun bitmez. Hedef 2048 taşı.</li>
+    </ul>
+    <div class="legend" id="legend" aria-label="Taş renkleri"></div>
+  </details>
+</main>
+
+<script src="src/core.js"></script>
+<script src="src/game.js"></script>
+
+</body></html>
