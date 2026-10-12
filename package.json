@@ -1,0 +1,22 @@
+{
+  "name": "blok2048",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Blok 2048 web and Android game",
+  "scripts": {
+    "build:web": "node scripts/build-web.cjs",
+    "android:sync": "npm run build:web && cap sync android",
+    "android:open": "cap open android",
+    "android:apk": "npm run android:sync && cd android && gradlew.bat assembleDebug"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/core": "^8.5.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.3"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "appId": "com.batuhantnk.blok2048",
+  "appName": "Blok 2048",
+  "webDir": "www",
+  "android": {
+    "backgroundColor": "#141a2e"
+  }
+}
