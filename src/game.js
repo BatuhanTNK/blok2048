@@ -11,16 +11,93 @@
     slidebar: $('slidebar'), pips: $('pips'), more: $('more'), slideFill: $('slideFill'), slideProgress: $('slideProgress'), have: $('shave'), cancel: $('slideCancel'),
     dirBtns: Array.from(document.querySelectorAll('.dirbtn')),
   };
-  const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const wait = ms => new Promise(res => setTimeout(res, reduced ? Math.min(ms, 20) : ms));
-  const fmt = n => n.toLocaleString('tr-TR');
+  const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+  let reduced = false;
+  const wait = ms => reduced ? Promise.resolve() : new Promise(res => setTimeout(res, ms));
+  const numberFormat = new Intl.NumberFormat('tr-TR');
+  const fmt = n => numberFormat.format(n);
 
   const store = {
     get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* kayıt tutulamadı, oyun etkilenmez */ } },
   };
+  function applyMotion(value) {
+    reduced = value === 'off' || (value === 'system' && motionQuery.matches);
+    document.documentElement.dataset.motion = reduced ? 'reduced' : 'full';
+    store.set('blok2048.motion', value);
+  }
+  const savedMotion = store.get('blok2048.motion', 'on');
+  const motionInputs = Array.from(document.querySelectorAll('input[name="motion"]'));
+  const motionValue = ['on', 'off', 'system'].includes(savedMotion) ? savedMotion : 'on';
+  for (const input of motionInputs) {
+    input.checked = input.value === motionValue;
+    input.addEventListener('change', () => applyMotion(input.value));
+  }
+  applyMotion(motionValue);
+  motionQuery.addEventListener('change', () => {
+    if (motionInputs.find(input => input.checked).value === 'system') applyMotion('system');
+  });
+  const app = document.querySelector('.app');
+  let screen = 'lobby';
+  let hasSavedGame = false;
+  function applyTheme(theme) {
+    if (theme === 'system') delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = theme;
+    store.set('blok2048.theme', theme);
+  }
+  const savedTheme = store.get('blok2048.theme', 'system');
+  const themeValue = ['light', 'dark'].includes(savedTheme) ? savedTheme : 'system';
+  for (const input of document.querySelectorAll('input[name="theme"]')) {
+    input.checked = input.value === themeValue;
+    input.addEventListener('change', () => applyTheme(input.value));
+  }
+  applyTheme(themeValue);
+  function updateLobby() {
+    $('resumeBtn').hidden = !hasSavedGame;
+    $('resumeTitle').textContent = SIZE + '×' + SIZE + (g.over ? ' · Sonucu gör' : ' · Devam et');
+    $('resumeInfo').textContent = fmt(g.score) + ' puan · ' + fmt(g.moves) + ' hamle';
+    for (const size of [5, 6, 7, 8]) {
+      const saved = size === SIZE && hasSavedGame ? g : restoreSizedGame(size);
+      $('record' + size).textContent = 'Rekor: ' + fmt(loadBest(size));
+      $('status' + size).textContent = saved
+        ? (saved.over ? 'Sonucu gör' : 'Devam et') + ' · ' + fmt(saved.score) + ' puan'
+        : 'Yeni oyun →';
+      $('size' + size).dataset.saved = String(!!saved);
+      $('size' + size).dataset.current = String(size === SIZE && hasSavedGame);
+    }
+  }
+  function showScreen(next) {
+    if (busy) return;
+    endDrag();
+    cancelPending();
+    swipe = null;
+    closeConfirm();
+    screen = next;
+    app.dataset.screen = next;
+    $('lobby').hidden = next !== 'lobby';
+    $('gameScreen').hidden = next !== 'game';
+    document.querySelector('.help').hidden = next !== 'lobby';
+    window.scrollTo(0, 0);
+    if (next === 'game') {
+      $('gameTitle').textContent = SIZE + '×' + SIZE;
+      fitBoard();
+      measure();
+      renderTray(false);
+      if (g.winPending) showWin();
+      else if (g.over) showOver();
+      else $('gameTitle').focus({ preventScroll: true });
+    } else {
+      updateLobby();
+      (hasSavedGame ? $('resumeBtn') : $('size8')).focus({ preventScroll: true });
+    }
+  }
 
   const SAVE_KEY = 'blok2048.game.v1';
+  const sizeSaveKey = size => SAVE_KEY + '.' + size;
+  function restoreSizedGame(size) {
+    const restored = restoreGame(store.get(sizeSaveKey(size), null));
+    return restored && restored.size === size ? restored : null;
+  }
   function snapshot() {
     return { version: 4, size: SIZE, mode: g.mode, board: g.board, tray: g.tray,
       score: g.score, moves: g.moves, maxTile: g.maxTile, won: g.won,
@@ -28,7 +105,10 @@
       slidesEarned: g.slidesEarned, slideProgress: g.slideProgress, over: g.over };
   }
   function saveGame() {
-    store.set(SAVE_KEY, snapshot());
+    hasSavedGame = true;
+    const data = snapshot();
+    store.set(sizeSaveKey(SIZE), data);
+    store.set(SAVE_KEY, data); // Önceki sürümler için son açık oyun kaydı.
     updateBest();
   }
   function restoreGame(data) {
@@ -83,7 +163,6 @@
   let drag = null;
   let M = null;
   let shownScore = 0;
-  let scoreToken = 0;
   let confirmFn = null;
   let pending = null; // önizlemesi gösterilen kaydırma yönü
   let swipe = null;
@@ -103,13 +182,15 @@
       const cell = document.createElement('div'); cell.className = 'cell'; el.grid.appendChild(cell);
     }
     best = loadBest(size);
-    for (const button of sizeButtons) button.setAttribute('aria-pressed', String(Number(button.dataset.size) === size));
+    for (const button of sizeButtons) button.dataset.current = String(Number(button.dataset.size) === size);
   }
   const sizeButtons = Array.from(document.querySelectorAll('.size-btn'));
   let tiles = new Array(N).fill(null);
 
   // Görsel efektler oyun durumundan bağımsızdır; azaltılmış harekette üretilmez.
   const effects = new Set();
+  let denseAnimation = false;
+  const activePulses = new Set();
   function effectNode(cls, lifetime = 650, parent = el.fx) {
     const node = document.createElement('div');
     node.className = cls;
@@ -125,14 +206,15 @@
     node.style.top = 'calc(' + r + ' * (var(--tile) + var(--gap)) + var(--tile) / 2)';
   }
   function burst(i, gold = false) {
-    if (reduced) return;
+    if (reduced || effects.size >= (denseAnimation ? 8 : 20)) return;
     const ring = effectNode('fx-ring');
     effectPos(ring, i);
     if (gold) ring.style.borderColor = 'var(--gold-hi)';
-    for (let k = 0; k < 8; k++) {
+    if (denseAnimation) return;
+    for (let k = 0; k < 4; k++) {
       const dot = effectNode('fx-dot');
       effectPos(dot, i);
-      const a = k * Math.PI / 4;
+      const a = k * Math.PI / 2;
       dot.style.setProperty('--dx', Math.cos(a) * 32 + 'px');
       dot.style.setProperty('--dy', Math.sin(a) * 32 + 'px');
       dot.style.setProperty('--spark', gold ? 'var(--gold-hi)' : (k % 2 ? 'var(--mint)' : 'var(--accent)'));
@@ -141,6 +223,7 @@
   function lineEffects(res) {
     if (reduced) return;
     for (const ln of res.lines) {
+      if (effects.size >= (denseAnimation ? 4 : 8)) break;
       const sweep = effectNode('fx-line ' + ln.kind);
       const offset = 'calc(' + ln.index + ' * (var(--tile) + var(--gap)))';
       if (ln.kind === 'row') {
@@ -153,12 +236,13 @@
     }
   }
   function combo(text) {
-    if (reduced) return;
+    if (reduced || effects.size >= 48) return;
     effectNode('combo', 1100).textContent = text;
   }
   function celebrate() {
     if (reduced) return;
     for (let k = 0; k < 28; k++) {
+      if (effects.size >= 48) break;
       const confetti = effectNode('confetti', 2000, el.board);
       confetti.style.left = (5 + k * 90 / 27) + '%';
       confetti.style.animationDelay = (k % 7) * 45 + 'ms';
@@ -171,9 +255,10 @@
   // ---------- taş elemanları ----------
   function paintTile(t, v) {
     t._v = v;
-    t.dataset.v = v <= 2048 ? String(v) : 'big';
-    t.dataset.d = String(Math.min(6, String(v).length));
-    t.firstChild.textContent = v;
+    const face = t._face || t;
+    face.dataset.v = v <= 2048 ? String(v) : 'big';
+    face.dataset.d = String(Math.min(6, String(v).length));
+    face.firstChild.textContent = v;
   }
   function makeTile(v) {
     const t = document.createElement('div');
@@ -183,13 +268,19 @@
     return t;
   }
   function setPos(t, i) {
-    t.style.setProperty('--r', Math.floor(i / SIZE));
-    t.style.setProperty('--c', i % SIZE);
+    if (t._index === i) return;
+    t._index = i;
+    // Do not mutate inherited custom properties on every move: that restyles the face and text.
+    t.style.transform = 'translate3d(calc(' + (i % SIZE) + ' * (100% + var(--gap))), calc(' + Math.floor(i / SIZE) + ' * (100% + var(--gap))), 0)';
   }
   function addTile(i, v, anim) {
     removeTile(i);
-    const t = makeTile(v);
-    t.classList.add('bt');
+    // The outer layer only moves; the inner face owns appearance and the merge pulse.
+    const t = document.createElement('div');
+    t.className = 'bt';
+    t._face = makeTile(v);
+    t._v = v;
+    t.appendChild(t._face);
     if (anim) t.classList.add(anim);
     setPos(t, i);
     el.layer.appendChild(t);
@@ -201,10 +292,30 @@
     if (t) { t.remove(); tiles[i] = null; }
   }
   function bump(t) {
+    if (reduced) return;
     t.style.animationDelay = '0ms';
     t.classList.remove('bump', 'pop', 'flash', 'keep');
-    void t.offsetWidth;
-    t.classList.add('bump');
+    if (t._bump) t._bump.cancel();
+    // A dense move can merge 32 tiles at once. Keep the travel animation for all
+    // tiles, but do not create 32 additional scaling layers at the same instant.
+    if (activePulses.size >= (denseAnimation ? 4 : 8)) return;
+    t._bump = t._face.animate([
+      { transform: 'scale(1)' }, { transform: 'scale(1.12)', offset: 0.35 },
+      { transform: 'scale(.98)', offset: 0.7 }, { transform: 'scale(1)' },
+    ], { duration: 240, easing: 'ease-out' });
+    const pulse = t._bump;
+    activePulses.add(pulse);
+    pulse.finished.then(() => activePulses.delete(pulse), () => activePulses.delete(pulse));
+  }
+  function moveTile(t, index, duration) {
+    if (!t || t._index === index) return Promise.resolve();
+    const from = t.style.transform;
+    setPos(t, index);
+    // Wait for the actual compositor animation, not a timer that can outrun a busy frame.
+    const animation = t.animate([{transform:from}, {transform:t.style.transform}], {
+      duration, easing:'cubic-bezier(.22,.8,.35,1)',
+    });
+    return animation.finished.catch(() => {});
   }
   function syncTiles() {
     for (let i = 0; i < N; i++) {
@@ -221,13 +332,11 @@
   }
 
   function floatText(i, text, cls) {
-    const d = document.createElement('div');
-    d.className = 'float' + (cls ? ' ' + cls : '');
+    if (reduced || denseAnimation || effects.size >= 24) return;
+    const d = effectNode('float' + (cls ? ' ' + cls : ''), 1100);
     d.textContent = text;
     d.style.left = (((i % SIZE) + 0.5) / SIZE * 100) + '%';
     d.style.top = ((Math.floor(i / SIZE) + 0.5) / SIZE * 100) + '%';
-    el.fx.appendChild(d);
-    setTimeout(() => d.remove(), 1100);
   }
 
   // ---------- parça görünümü ----------
@@ -250,7 +359,7 @@
     const gapPx = 10;
     const slotW = (el.tray.clientWidth - gapPx * 2) / 3;
     const boardCell = M ? M.cell : 36;
-    const mc = Math.max(10, Math.min(Math.round(boardCell * 0.58), Math.floor((slotW - 18 - 6) / 4)));
+    const mc = Math.max(10, Math.min(18, Math.round(boardCell * 0.58), Math.floor((slotW - 18 - 6) / 4)));
     el.tray.style.setProperty('--mc', mc + 'px');
     el.tray.replaceChildren();
     g.tray.forEach((p, slot) => {
@@ -271,6 +380,19 @@
   }
 
   // ---------- ölçü ----------
+  function fitBoard() {
+    if (screen !== 'game') return;
+    const game = $('gameScreen');
+    const style = getComputedStyle(game);
+    const body = getComputedStyle(document.body);
+    const occupied = Array.from(game.children).filter(node => node !== el.board && !node.hidden)
+      .reduce((sum, node) => sum + node.getBoundingClientRect().height, 0);
+    const safe = parseFloat(body.paddingTop) + parseFloat(body.paddingBottom);
+    game.style.setProperty('--board-space', Math.max(180, window.innerHeight - occupied - 5 * parseFloat(style.rowGap) - 16 - safe - 4) + 'px');
+  }
+  window.addEventListener('resize', () => {
+    if (screen === 'game') { endDrag(); fitBoard(); measure(); renderTray(false); }
+  });
   function measure() {
     const cells = el.grid.children;
     const a = cells[0].getBoundingClientRect();
@@ -303,25 +425,31 @@
     measure();
     const ghost = pieceView(p, M.cell, M.gap);
     ghost.classList.add('ghost');
+    drag = { slot, p, ghost, id: e.pointerId, target: null, touch: e.pointerType !== 'mouse', slotEl, key: '', frame: null, point: null };
+    // Position before attaching: layout reads must never expose a ghost at (0, 0).
+    moveGhost(e);
     document.body.appendChild(ghost);
-    drag = { slot, p, ghost, id: e.pointerId, target: null, touch: e.pointerType !== 'mouse', slotEl, key: '' };
     slotEl.classList.add('lifted');
     try { slotEl.setPointerCapture(e.pointerId); } catch (err) { /* yakalama desteklenmiyor */ }
-    moveGhost(e);
   }
   function onMove(e) {
     if (!drag || e.pointerId !== drag.id) return;
-    moveGhost(e);
+    drag.point = { clientX: e.clientX, clientY: e.clientY };
+    if (drag.frame !== null) return;
+    drag.frame = requestAnimationFrame(() => {
+      drag.frame = null;
+      moveGhost(drag.point);
+    });
   }
   function moveGhost(e) {
-    measure();
+    // Geometry is measured on pickup; resizing cancels the drag.
     const p = drag.p;
     const w = p.w * M.pitch - M.gap;
     const h = p.h * M.pitch - M.gap;
     const lift = drag.touch ? M.cell * 1.7 : M.cell * 0.5;
     const gx = e.clientX - w / 2;
     const gy = e.clientY - h / 2 - lift;
-    drag.ghost.style.transform = 'translate(' + gx + 'px, ' + gy + 'px)';
+    drag.ghost.style.transform = 'translate3d(' + gx + 'px, ' + gy + 'px, 0)';
     const t = findTarget(p, (gy - M.y0) / M.pitch, (gx - M.x0) / M.pitch);
     const key = t ? t.r + ',' + t.c : '';
     if (key !== drag.key) {
@@ -334,6 +462,7 @@
     const d = drag;
     drag = null;
     if (!d) return null;
+    if (d.frame !== null) cancelAnimationFrame(d.frame);
     d.ghost.remove();
     d.slotEl.classList.remove('lifted');
     el.pv.replaceChildren();
@@ -346,6 +475,8 @@
   }
   async function onUp(e) {
     if (!drag || e.pointerId !== drag.id) return;
+    // A release can arrive before the queued frame; use the final pointer position.
+    moveGhost(e);
     const d = endDrag();
     if (d.target) await play(d.slot, d.target.r, d.target.c, d.p);
     else setHint('Parça oraya sığmıyor. Başka bir yere bırak.');
@@ -392,20 +523,43 @@
   }
   function setHint(t) { el.hint.textContent = t; }
 
-  async function animateMerges(merges) {
-    for (const m of merges) {
-      const gone = tiles[m.gone], at = tiles[m.at];
-      if (gone) {
-        tiles[m.gone] = null;
-        gone.style.zIndex = '3';
-        gone.classList.remove('pop', 'bump');
-        setPos(gone, m.at);
+  async function paintMergeResults(items) {
+    // Changing 32 textured faces in one frame can stall Android rasterization.
+    // Spread only dense result updates across frames; all tile travel stays animated.
+    for (let offset = 0; offset < items.length; offset += 8) {
+      if (items.length > 8 && !document.hidden) await new Promise(requestAnimationFrame);
+      for (const { m, gone, at } of items.slice(offset, offset + 8)) {
+        if (gone) gone.remove();
+        if (at) { paintTile(at, m.value); bump(at); burst(m.at, m.kind === 'line' || m.value >= 64); }
+        floatText(m.at, '+' + fmt(m.points), m.kind === 'line' ? 'gold' : '');
       }
-      await wait(170);
-      if (gone) gone.remove();
-      if (at) { paintTile(at, m.value); bump(at); burst(m.at, m.kind === 'line' || m.value >= 64); }
-      floatText(m.at, '+' + fmt(m.points), m.kind === 'line' ? 'gold' : '');
-      await wait(65);
+    }
+  }
+
+  async function animateMerges(merges) {
+    // Disjoint merges can share a frame. Dependent chain steps retain their order.
+    const batches = [];
+    const lastLevel = new Array(N).fill(-1);
+    for (const m of merges) {
+      const level = Math.max(lastLevel[m.gone], lastLevel[m.at]) + 1;
+      (batches[level] ||= []).push(m);
+      lastLevel[m.gone] = lastLevel[m.at] = level;
+    }
+    const travelMs = Math.min(160, 720 / Math.max(1, batches.length));
+    const settleMs = Math.min(40, 120 / Math.max(1, batches.length));
+    for (const group of batches) {
+      const moving = group.map(m => {
+        const gone = tiles[m.gone], at = tiles[m.at];
+        if (gone) {
+          tiles[m.gone] = null;
+          gone.style.zIndex = '3';
+          gone.classList.remove('pop', 'bump');
+        }
+        return { m, gone, at, finished:moveTile(gone, m.at, travelMs) };
+      });
+      await Promise.all(moving.map(item => item.finished));
+      await paintMergeResults(moving);
+      await wait(settleMs);
     }
   }
 
@@ -415,20 +569,26 @@
     busy = true;
     const res = C.applyMove(g, slot, r, c);
     if (!res) { busy = false; return; }
+    denseAnimation = res.merges.length > 8;
+    el.board.classList.toggle('animating', !reduced);
     saveGame();
     syncSlideUI();
 
     const slotEl = el.tray.children[slot];
     if (slotEl) { slotEl.className = 'slot empty'; slotEl.replaceChildren(); }
 
-    res.placed.forEach((i, k) => {
-      const t = addTile(i, piece.value, 'pop');
-      if (!reduced) t.style.animationDelay = Math.min(k * 18, 90) + 'ms';
-    });
-    await wait(150);
+    if (reduced) {
+      syncTiles();
+    } else {
+      res.placed.forEach((i, k) => {
+        const t = addTile(i, piece.value, 'pop');
+        if (!reduced) t.style.animationDelay = Math.min(k * 18, 90) + 'ms';
+      });
+      await wait(150);
 
-    if (res.lines.length) lineEffects(res);
-    await animateMerges(res.merges);
+      if (res.lines.length) lineEffects(res);
+      await animateMerges(res.merges);
+    }
 
     if (window.__BLOK_TEST) {
       const dom = tiles.map(t => (t ? t._v : 0));
@@ -446,6 +606,7 @@
     if (res.reachedGoal) showWin();
     else if (res.over) showOver();
     busy = false;
+    el.board.classList.remove('animating');
     syncSlideUI(res.slideEarned.length > 0);
     if (!res.over && stuck()) setHint(STUCK);
   }
@@ -471,7 +632,7 @@
   }
 
   function syncSlideUI(earned) {
-    for (const id of ['newBtn', 'confirmYes', 'againBtn', 'winNewBtn']) $(id).disabled = busy;
+    for (const id of ['newBtn', 'lobbyBtn', 'resumeBtn', 'confirmYes', 'againBtn', 'winNewBtn']) $(id).disabled = busy;
     for (const button of sizeButtons) button.disabled = busy;
     const pips = el.pips.children;
     for (let i = 0; i < pips.length; i++) pips[i].className = i < g.slides ? (earned && i === g.slides - 1 ? 'on new' : 'on') : '';
@@ -480,7 +641,7 @@
     el.more.textContent = ready ? 'Hazır' : '%' + percent;
     el.more.hidden = false;
     el.more.title = ready ? '1 hak bekliyor; depoda yer açınca eklenecek' : 'Her tepsi yenilenmesinde +%20; beş tepside 1 hak';
-    el.slideFill.style.width = percent + '%';
+    el.slideFill.style.transform = 'scaleX(' + percent / 100 + ')';
     el.slideProgress.setAttribute('aria-valuenow', String(percent));
     el.slideProgress.setAttribute('aria-valuetext', ready ? '1 kaydırma hakkı hazır, depoda bekliyor' : '%' + percent + ', ' + g.slideProgress + ' / ' + g.tune.slideTrayTarget + ' tepsi');
     el.slideProgress.classList.toggle('charged', ready);
@@ -542,6 +703,8 @@
     if (!g || busy || drag || g.winPending) return;
     const res = C.applySlide(g, dir);
     if (!res) return;
+    denseAnimation = res.merges + res.lineMerges.length > 8;
+    el.board.classList.toggle('animating', !reduced);
     saveGame();
     busy = true;
     pending = null;
@@ -549,32 +712,34 @@
     el.board.classList.remove('previewing');
     syncSlideUI();
 
-    // Taşlar yeni yerine kayar, birleşenler üst üste biner
-    const next = new Array(N).fill(null);
-    const gone = [];
-    for (const m of res.moves) {
-      next[m.to] = tiles[m.from[0]];
-      if (m.from.length === 2) gone.push({ t: tiles[m.from[1]], to: m.to });
-    }
-    el.layer.classList.add('sliding');
-    for (const m of res.moves) if (next[m.to]) setPos(next[m.to], m.to);
-    for (const o of gone) if (o.t) { o.t.style.zIndex = '1'; setPos(o.t, o.to); }
-    await wait(210);
-    for (const m of res.moves) {
-      if (!m.merged || !next[m.to]) continue;
-      paintTile(next[m.to], m.value);
-      bump(next[m.to]);
-      burst(m.to, m.value >= 64);
-      floatText(m.to, '+' + fmt(m.value));
-    }
-    for (const o of gone) if (o.t) o.t.remove();
-    tiles.fill(null);
-    for (let i = 0; i < N; i++) tiles[i] = next[i];
-    el.layer.classList.remove('sliding');
-    if (res.merges) await wait(170);
+    if (reduced) {
+      syncTiles();
+    } else {
+      // Taşlar yeni yerine kayar, birleşenler üst üste biner
+      const next = new Array(N).fill(null);
+      const gone = [];
+      for (const m of res.moves) {
+        next[m.to] = tiles[m.from[0]];
+        if (m.from.length === 2) gone.push({ t: tiles[m.from[1]], to: m.to });
+      }
+      el.layer.classList.add('sliding');
+      const movement = res.moves.map(m => moveTile(next[m.to], m.to, 200));
+      for (const o of gone) if (o.t) {
+        o.t.style.zIndex = '1'; movement.push(moveTile(o.t, o.to, 200));
+      }
+      await Promise.all(movement);
+      await paintMergeResults(res.moves.filter(m => m.merged && next[m.to]).map(m => ({
+        m:{at:m.to, value:m.value, points:m.value, kind:'slide'}, at:next[m.to],
+      })));
+      for (const o of gone) if (o.t) o.t.remove();
+      tiles.fill(null);
+      for (let i = 0; i < N; i++) tiles[i] = next[i];
+      el.layer.classList.remove('sliding');
+      if (res.merges) await wait(170);
 
-    if (res.lines.length) lineEffects(res);
-    await animateMerges(res.lineMerges);
+      if (res.lines.length) lineEffects(res);
+      await animateMerges(res.lineMerges);
+    }
 
     if (window.__BLOK_TEST) {
       const dom = tiles.map(t => (t ? t._v : 0));
@@ -592,6 +757,7 @@
     if (res.reachedGoal) showWin();
     else if (res.over) showOver();
     busy = false;
+    el.board.classList.remove('animating');
     syncSlideUI(res.slideEarned.length > 0);
     if (!res.over && stuck()) setHint(STUCK);
   }
@@ -600,7 +766,7 @@
   el.cancel.addEventListener('click', cancelPending);
 
   document.addEventListener('keydown', e => {
-    if (!g || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (screen !== 'game' || !g || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
     const map = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' };
     if (map[e.key]) {
       if (g.slides <= 0 || g.over) return; // hakkın yokken oklar sayfayı kaydırmaya devam etsin
@@ -630,20 +796,13 @@
     shownScore = to;
     if (to > from && !reduced) {
       const card = el.score.parentElement;
-      card.classList.remove('scored');
-      void card.offsetWidth;
-      card.classList.add('scored');
+      if (card._scoreAnimation) card._scoreAnimation.cancel();
+      card._scoreAnimation = el.score.animate(
+        [{transform:'scale(1)'}, {transform:'scale(1.06)'}, {transform:'scale(1)'}],
+        {duration:300, easing:'ease-out'}
+      );
     }
-    const token = ++scoreToken;
-    if (reduced || from === to) { el.score.textContent = fmt(to); return; }
-    const t0 = performance.now();
-    const step = now => {
-      if (token !== scoreToken) return;
-      const k = Math.min(1, (now - t0) / 450);
-      el.score.textContent = fmt(Math.round(from + (to - from) * (1 - Math.pow(1 - k, 3))));
-      if (k < 1) requestAnimationFrame(step);
-    };
-    requestAnimationFrame(step);
+    el.score.textContent = fmt(to);
   }
   function updateBest() {
     best = Math.max(best, g.score);
@@ -654,7 +813,7 @@
   function updateGoal() {
     el.maxv.textContent = g.maxTile ? fmt(g.maxTile) : '0';
     const frac = g.maxTile >= 2 ? Math.min(1, (Math.log2(g.maxTile) - 1) / 10) : 0;
-    el.bar.style.width = (frac * 100) + '%';
+    el.bar.style.transform = 'scaleX(' + frac + ')';
   }
   function showOver() {
     $('overText').textContent = 'Hiçbir parça sığmıyor. Skor ' + fmt(g.score) + ', en büyük taş ' + fmt(g.maxTile) + '.';
@@ -674,6 +833,7 @@
     $('confirmYes').textContent = label;
     confirmFn = fn;
     $('confirm').hidden = false;
+    $('confirmYes').focus({ preventScroll: true });
   }
   function closeConfirm() { $('confirm').hidden = true; confirmFn = null; }
 
@@ -689,7 +849,6 @@
     pending = null;
     el.board.classList.remove('previewing');
     shownScore = g.score;
-    scoreToken++;
     el.score.textContent = fmt(g.score);
     updateBest();
     updateGoal();
@@ -710,22 +869,39 @@
     drag = null;
     saveGame();
     renderAll();
+    showScreen('game');
   }
   function wantNewGame() {
     if (busy) return;
-    if (g.moves <= 4 || g.over) { startGame(); return; }
-    askConfirm('Mevcut oyun silinir. Yeni oyun başlasın mı?', 'Yeni oyun', () => startGame());
+    if (g.moves === 0 || g.over) { startGame(); return; }
+    askConfirm(SIZE + '×' + SIZE + ' kaydı sıfırlanır. Yeni oyun başlasın mı?', 'Yeni oyun', () => startGame());
+  }
+
+  function openBoard(size) {
+    if (busy) return;
+    if (size === SIZE && hasSavedGame) { showScreen('game'); return; }
+    if (hasSavedGame) saveGame();
+    const restored = restoreSizedGame(size);
+    if (!restored) { startGame(size); return; }
+    endDrag();
+    swipe = null;
+    closeConfirm();
+    configureBoard(size);
+    g = restored;
+    store.set('blok2048.size', size);
+    saveGame();
+    renderAll();
+    showScreen('game');
   }
 
   for (const button of sizeButtons) button.addEventListener('click', () => {
     const size = Number(button.dataset.size);
-    if (busy || size === SIZE) return;
-    if (g.moves > 0 && !g.over) {
-      askConfirm(size + '×' + size + ' tahtaya geçince mevcut oyun sıfırlanır. Devam edilsin mi?', 'Tahtayı değiştir', () => startGame(size));
-    } else startGame(size);
+    openBoard(size);
   });
 
   $('newBtn').addEventListener('click', () => wantNewGame());
+  $('lobbyBtn').addEventListener('click', () => showScreen('lobby'));
+  $('resumeBtn').addEventListener('click', () => showScreen('game'));
   $('confirmYes').addEventListener('click', () => { const f = confirmFn; closeConfirm(); if (f) f(); });
   $('confirmNo').addEventListener('click', closeConfirm);
   $('againBtn').addEventListener('click', () => startGame());
@@ -743,20 +919,21 @@
   for (const v of [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048]) legend.appendChild(makeTile(v));
 
   if (window.ResizeObserver) {
-    new ResizeObserver(() => { if (g && !drag && !busy) { measure(); renderTray(false); } }).observe(el.board);
+    const observer = new ResizeObserver(() => { if (screen === 'game' && g && !drag && !busy) { fitBoard(); measure(); renderTray(false); } });
+    for (const node of [$('gameScreen'), el.hint, el.slidebar, el.tray, document.querySelector('.stats')]) observer.observe(node);
   }
 
   const hot = window.claude && window.claude.hot;
   if (hot && hot.snapshot) hot.snapshot(snapshot);
   function boot(data) {
-    const restored = restoreGame(data) || restoreGame(store.get(SAVE_KEY, null));
     const preferred = store.get('blok2048.size', 8);
+    const restored = restoreGame(data) || restoreGame(store.get(SAVE_KEY, null)) || restoreSizedGame(preferred);
+    hasSavedGame = !!restored;
     configureBoard(restored ? restored.size : ([5, 6, 7, 8].includes(preferred) ? preferred : 8));
     g = restored || C.newGame({ start: 4 });
-    saveGame();
+    if (restored) saveGame(); // Tek kayıt kullanan eski sürümü boyuta özel kayda taşı.
     renderAll();
-    if (g.winPending) showWin();
-    else if (g.over) showOver();
+    showScreen('lobby');
   }
   if (hot && hot.ready) hot.ready(boot); else boot(hot && hot.data ? hot.data : {});
 

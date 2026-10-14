@@ -1,19 +1,51 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><link rel="stylesheet" href="src/styles.css"></head><body>
+<!doctype html><html lang="tr" data-motion="full"><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><link rel="stylesheet" href="src/styles.css">
 <title>Blok 2048</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Instrument+Sans:wght@400;500;600&display=swap">
+</head><body>
 
 
 
-
-<main class="app">
-  <header class="top">
-    <div class="brand">
-      <span class="brand-icon" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+<main class="app" data-screen="lobby">
+  <section class="lobby" id="lobby" aria-label="Oyun lobisi">
+    <header class="lobby-header"><span class="eyebrow">BİR HAMLE DAHA</span></header>
+    <div class="lobby-hero">
+      <div class="hero-blocks" aria-hidden="true"><span>2</span><span>4</span><span>8</span><span>16</span></div>
       <div><h1>Blok <em>2048</em></h1>
-      <p>Yerleştir. Birleştir. Bir hamle daha.</p></div>
+      <p>Yerleştir. Birleştir. Rekorunu aş.</p></div>
     </div>
+    <button class="btn primary resume-btn" id="resumeBtn" type="button" hidden><span><small>SON OYNADIĞIN TAHTA</small><strong id="resumeTitle">Devam et</strong><span id="resumeInfo"></span></span><span class="resume-arrow" aria-hidden="true">→</span></button>
+    <section class="lobby-choice" aria-labelledby="chooseTitle">
+      <h2 id="chooseTitle">Tahtanı seç</h2><p>Her boyutta ayrı oyun. İlerlemen korunur.</p>
+      <div class="size-options" role="group" aria-label="Tahta boyutu seçimi">
+        <button class="size-btn" id="size5" data-size="5" type="button"><b>5×5</b><span>Dar alan · 25 hücre</span><small id="record5"></small><span class="board-status" id="status5"></span></button>
+        <button class="size-btn" id="size6" data-size="6" type="button"><b>6×6</b><span>Dengeli · 36 hücre</span><small id="record6"></small><span class="board-status" id="status6"></span></button>
+        <button class="size-btn" id="size7" data-size="7" type="button"><b>7×7</b><span>Geniş alan · 49 hücre</span><small id="record7"></small><span class="board-status" id="status7"></span></button>
+        <button class="size-btn" id="size8" data-size="8" type="button"><b>8×8</b><span>Klasik · 64 hücre</span><small id="record8"></small><span class="board-status" id="status8"></span></button>
+      </div>
+    </section>
+    <details class="settings" id="settings">
+      <summary><span>Ayarlar<small>Görünüm ve hareket</small></span><span class="settings-chevron" aria-hidden="true">⌄</span></summary>
+      <div class="settings-fields">
+        <fieldset><legend>Görünüm</legend><div class="setting-options theme-options">
+          <label><input type="radio" name="theme" value="light"><span class="setting-option"><span class="theme-sample sample-light" aria-hidden="true"><i></i><i></i><i></i></span><span>Açık</span></span></label>
+          <label><input type="radio" name="theme" value="dark"><span class="setting-option"><span class="theme-sample sample-dark" aria-hidden="true"><i></i><i></i><i></i></span><span>Koyu</span></span></label>
+          <label><input type="radio" name="theme" value="system"><span class="setting-option"><span class="theme-sample sample-system" aria-hidden="true"><i></i><i></i><i></i></span><span>Otomatik</span></span></label>
+        </div><p class="setting-note">Otomatik, cihazının görünümünü takip eder.</p></fieldset>
+        <fieldset><legend>Animasyonlar</legend><div class="setting-options motion-options">
+          <label><input type="radio" name="motion" value="on"><span class="setting-option">Açık</span></label>
+          <label><input type="radio" name="motion" value="off"><span class="setting-option">Azaltılmış</span></label>
+          <label><input type="radio" name="motion" value="system"><span class="setting-option">Otomatik</span></label>
+        </div><p class="setting-note">Otomatik, cihazının hareket tercihini takip eder.</p></fieldset>
+      </div>
+    </details>
+    <p class="save-note">Oyunların bu tarayıcıda otomatik kaydedilir.</p>
+  </section>
+  <section class="game-screen" id="gameScreen" aria-label="Oyun" hidden>
+  <header class="top">
+    <button class="btn" id="lobbyBtn" type="button">‹ Lobi</button>
+    <h1 class="game-title" id="gameTitle" tabindex="-1">8×8</h1>
     <button class="btn" id="newBtn" type="button">Yeni oyun</button>
   </header>
 
@@ -25,25 +57,6 @@
       <span class="cur" id="maxv">0</span>
       <div class="track"><i id="barfill"></i></div>
       <span class="end">2048</span>
-    </div>
-  </section>
-
-  <section class="board-sizes" aria-label="Tahta boyutu">
-    <span>Tahta</span>
-    <div class="size-options" role="group" aria-label="Tahta boyutu seçimi">
-      <button class="size-btn" id="size8" data-size="8" type="button" aria-pressed="true">8×8</button>
-      <button class="size-btn" id="size7" data-size="7" type="button" aria-pressed="false">7×7</button>
-      <button class="size-btn" id="size6" data-size="6" type="button" aria-pressed="false">6×6</button>
-      <button class="size-btn" id="size5" data-size="5" type="button" aria-pressed="false">5×5</button>
-    </div>
-  </section>
-
-  <section class="modes" aria-label="Oyun kuralı">
-    <p class="mdesc rule-note"><b>Çizgiyi doldur, sayıları büyüt.</b><br>Dolu çizgide eşit sayılar birleşir; diğer taşlar kalır.</p>
-    <div class="confirm" id="confirm" hidden>
-      <span id="confirmMsg"></span>
-      <button class="btn primary" id="confirmYes" type="button">Evet</button>
-      <button class="btn" id="confirmNo" type="button">Vazgeç</button>
     </div>
   </section>
 
@@ -90,11 +103,16 @@
   </section>
 
   <section class="tray" id="tray" aria-label="Parçalar"></section>
-
+  </section>
+  <div class="confirm" id="confirm" role="alert" hidden>
+    <span id="confirmMsg"></span>
+    <button class="btn primary" id="confirmYes" type="button">Evet</button>
+    <button class="btn" id="confirmNo" type="button">Vazgeç</button>
+  </div>
   <details class="help">
     <summary>Nasıl oynanır</summary>
     <ul>
-      <li><b>Tahta.</b> 8×8, 7×7, 6×6 veya 5×5 seçebilirsin. Boyut değişince yeni oyun başlar; her boyutun rekoru ayrı tutulur.</li>
+      <li><b>Tahta.</b> 8×8, 7×7, 6×6 veya 5×5 seçebilirsin. Lobiden boyutlar arasında geçiş yap; her boyutun oyunu ve rekoru ayrı tutulur. Yeni oyun yalnızca açık tahtanın kaydını sıfırlar.</li>
       <li><b>Yerleştir.</b> Parçayı sürükleyip tahtaya bırak. Parçalar döndürülmez.</li>
       <li><b>Birleştir.</b> Aynı sayılı iki taş yan yana gelince birleşir (2 + 2 = 4). Yeni taş başka bir eşiyle karşılaşırsa zincir sürer ve her halka bir öncekinden daha çok puan verir.</li>
       <li>Normal yerleştirmede parçanın kendi taşları birbiriyle birleşmez. Tamamen dolan çizgide ise tüm eşit taşlar birleşebilir.</li>

@@ -4,5 +4,12 @@
   "webDir": "www",
   "android": {
     "backgroundColor": "#141a2e"
+  },
+  "plugins": {
+    "SystemBars": {
+      "hidden": true,
+      "insetsHandling": "disable",
+      "initialViewportFitValueHint": "cover"
+    }
   }
 }
